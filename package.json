@@ -1,9 +1,17 @@
 {
   "name": "whatsapp-bot",
-  "version": "1.base",
+  "version": "5.1.0",
   "description": "WhatsApp Bot by FN",
   "main": "core/main.js",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Terror-Machine/fnbots.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Terror-Machine/fnbots/issues"
+  },
+  "homepage": "https://github.com/Terror-Machine/fnbots#readme",
   "scripts": {
     "start": "node core/main.js",
     "dev": "nodemon core/main.js --ignore node_modules --ignore logs --ignore src/sampah",
@@ -12,7 +20,8 @@
     "lint:fix": "eslint . --fix",
     "test": "NODE_OPTIONS='--experimental-vm-modules --no-warnings' jest --runInBand",
     "build:addon": "node-gyp configure && node-gyp build",
-    "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s && git add CHANGELOG.md"
+    "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s -r 0 && git add CHANGELOG.md",
+    "changelog:update": "conventional-changelog -p angular -i CHANGELOG.md -s && git add CHANGELOG.md"
   },
   "keywords": [
     "whatsapp",
@@ -58,7 +67,6 @@
     "mongoose": "^8.18.1",
     "node-cron": "^4.2.1",
     "node-gtts": "github:Terror-Machine/node-gtts",
-    "node-webpmux": "^3.2.1",
     "openai": "^5.20.0",
     "p-queue": "^9.0.0",
     "pino": "^9.10.0",
