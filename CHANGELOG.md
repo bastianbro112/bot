@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [5.1.0] - 2025-10-11
 
 ### 🚀 What's Changed
 - chore: update auto-release workflow for improved changelog generation and version handling ([0da6422](https://github.com/Terror-Machine/fnbots/commit/0da64220568d8bdb2c35366e057d6f57c303fb70))
