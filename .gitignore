@@ -9,3 +9,4 @@ venv/
 .env
 .vscode/settings.json
 bench.sh
+log.sh
