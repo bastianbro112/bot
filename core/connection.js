@@ -40,7 +40,7 @@ const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
 async function getBaileysVersion() {
   try {
-    const { version } = await fetchLatestWaWebVersion();
+    const version = [2, 3000, 1027934701]
     return version;
   } catch (error) {
     await log(`Failed to fetch latest Baileys version, using fallback:\n${error.message}`, true);
@@ -63,27 +63,12 @@ export async function createWASocket(dbSettings) {
   const authStore = await AuthStore();
   const { state, saveCreds } = authStore;
   const fn = makeWASocket({
-    qrTimeout: config.performance.qrTimeout,
-    connectTimeoutMs: config.performance.connectTimeoutMs,
-    keepAliveIntervalMs: config.performance.keepAliveIntervals,
-    defaultQueryTimeoutMs: undefined,
     logger: pinoLogger,
     version: global.version,
-    browser: Browsers.ubuntu('Chrome'),
+    browser: Browsers.macOS('Chrome'),
+    countryCode: 'ID',
     emitOwnEvents: true,
-    retryRequestDelayMs: 1000,
-    maxMsgRetryCount: 5,
     auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pinoLogger) },
-    transactionOpts: { maxCommitRetries: 5, delayBetweenTriesMs: 1000 },
-    markOnlineOnConnect: true,
-    linkPreviewImageThumbnailWidth: 192,
-    syncFullHistory: true,
-    fireInitQueries: true,
-    generateHighQualityLinkPreview: true,
-    shouldIgnoreJid: (jid) => { return isJidBroadcast(jid) && jid !== 'status@broadcast'; },
-    appStateMacVerification: { patch: true, snapshot: true },
-    enableAutoSessionRecreation: true,
-    enableRecentMessageCache: true
   });
 
   fn.clearSession = authStore.clearSession;
