@@ -141,140 +141,103 @@ install_base_dependencies() {
     print_success "Dependencies dasar berhasil diinstall"
 }
 
-fix_mongodb_environment() {
-    print_step "Memperbaiki environment variable MongoDB..."
-    
-    $SUDO_CMD systemctl unset-environment MONGODB_CONFIG_OVERRIDE_NOFORK 2>/dev/null || true
-    
-    if [ -f "/usr/lib/systemd/system/mongod.service" ]; then
-        print_info "Memperbaiki service file MongoDB..."
-        $SUDO_CMD cp /usr/lib/systemd/system/mongod.service /usr/lib/systemd/system/mongod.service.backup 2>/dev/null || true
-        $SUDO_CMD sed -i '/Environment="MONGODB_CONFIG_OVERRIDE_NOFORK=1"/d' /usr/lib/systemd/system/mongod.service 2>/dev/null || true
-    fi
-    
-    $SUDO_CMD systemctl daemon-reload
-    print_success "Environment variable MongoDB diperbaiki"
-}
+create_mongodb_service_file() {
+    print_step "Membuat file service systemd untuk MongoDB..."
+    $SUDO_CMD tee /etc/systemd/system/mongod.service > /dev/null << 'EOF'
+[Unit]
+Description=MongoDB Database Server
+Documentation=https://docs.mongodb.org/manual
+After=network.target
 
-cleanup_mongodb_sockets() {
-    print_step "Membersihkan socket files MongoDB..."
-    
-    $SUDO_CMD rm -f /tmp/mongodb-*.sock 2>/dev/null || true
-    $SUDO_CMD rm -f /var/lib/mongodb/mongod.lock 2>/dev/null || true
-    
-    print_success "Socket files MongoDB dibersihkan"
-}
+[Service]
+User=mongodb
+Group=mongodb
+Environment="OPTIONS=-f /etc/mongod.conf"
+EnvironmentFile=-/etc/default/mongod
+ExecStart=/usr/bin/mongod $OPTIONS
+# file size
+LimitFSIZE=infinity
+# cpu time
+LimitCPU=infinity
+# virtual memory size
+LimitAS=infinity
+# open files
+LimitNOFILE=64000
+# processes/threads
+LimitNPROC=64000
+# total threads (user+kernel)
+TasksMax=infinity
+TasksAccounting=false
 
-create_mongodb_config() {
-    print_step "Membuat konfigurasi MongoDB..."
-    
-    $SUDO_CMD tee /etc/mongod.conf > /dev/null << 'EOF'
-# mongod.conf
+# Recommended limits for mongod as per official documentation.
+# Read more: https://docs.mongodb.com/manual/reference/ulimit/
 
-# Where and how to store data.
-storage:
-  dbPath: /var/lib/mongodb
-  journal:
-    enabled: true
-
-# where to write logging data.
-systemLog:
-  destination: file
-  logAppend: true
-  path: /var/log/mongodb/mongod.log
-
-# network interfaces
-net:
-  port: 27017
-  bindIp: 127.0.0.1
-  unixDomainSocket:
-    enabled: false
-
-# how the process runs
-processManagement:
-  fork: false
-  timeZoneInfo: /usr/share/zoneinfo
-
-# security:
-#   authorization: enabled
-
-# setParameter:
-#   enableLocalhostAuthBypass: false
+[Install]
+WantedBy=multi-user.target
 EOF
-
-    print_success "Konfigurasi MongoDB dibuat"
-}
-
-setup_mongodb_directories() {
-    print_step "Menyiapkan directories MongoDB..."
-    
-    $SUDO_CMD mkdir -p /var/lib/mongodb
-    $SUDO_CMD mkdir -p /var/log/mongodb
-    $SUDO_CMD chown -R mongodb:mongodb /var/lib/mongodb
-    $SUDO_CMD chown -R mongodb:mongodb /var/log/mongodb
-    $SUDO_CMD chmod 755 /var/lib/mongodb
-    $SUDO_CMD chmod 755 /var/log/mongodb
-    
-    print_success "Directories MongoDB disiapkan"
+    print_success "File service MongoDB berhasil dibuat."
 }
 
 install_mongodb() {    
-    $SUDO_CMD systemctl stop mongod 2>/dev/null || true
+    print_step "Memulai instalasi MongoDB (dari repositori resmi MongoDB, Inc.)..."
     
-    print_step "Menghentikan process MongoDB yang aktif..."
+    $SUDO_CMD systemctl stop mongod 2>/dev/null || true
+    print_info "Menghentikan proses MongoDB yang mungkin masih aktif..."
     $SUDO_CMD pkill -f mongod 2>/dev/null || true
     sleep 3
     
-    print_step "Menghapus instalasi MongoDB lama..."
-    $SUDO_CMD apt remove --purge mongodb-org* -y 2>/dev/null || true
+    print_step "Menghapus instalasi MongoDB versi lama (jika ada)..."
+    $SUDO_CMD apt-get remove --purge mongodb-org* mongodb* -y 2>/dev/null || true
     
-    print_step "Membersihkan data lama..."
+    print_step "Membersihkan data dan repository lama..."
     $SUDO_CMD rm -rf /var/lib/mongodb
     $SUDO_CMD rm -rf /var/log/mongodb
+    $SUDO_CMD rm -rf /etc/mongod.conf
+    $SUDO_CMD rm -f /etc/apt/sources.list.d/mongodb*.list
+    $SUDO_CMD apt-get autoremove -y
     
-    print_step "Menghapus repository lama..."
-    $SUDO_CMD rm -f /etc/apt/sources.list.d/mongodb*.list 2>/dev/null || true
-    $SUDO_CMD rm -f /usr/share/keyrings/mongodb*.gpg 2>/dev/null || true
+    print_step "Menambahkan GPG Key resmi MongoDB..."
+    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+       $SUDO_CMD gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+
+    print_step "Menambahkan repositori MongoDB sesuai versi Ubuntu..."
+    MONGO_REPO_FILE="/etc/apt/sources.list.d/mongodb-org.list"
     
-    print_step "Menambahkan repository MongoDB..."
-    $SUDO_CMD apt-get install -y gnupg curl
-    curl -fsSL "https://www.mongodb.org/static/pgp/server-4.4.asc" | \
-        $SUDO_CMD gpg --dearmor -o /usr/share/keyrings/mongodb-server-4.4.gpg
-    
-    echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-4.4.gpg ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | \
-        $SUDO_CMD tee /etc/apt/sources.list.d/mongodb-org-4.4.list
-    
-    print_step "Update package list..."
+    case "$OS_CODENAME" in
+        noble|jammy)
+            echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | $SUDO_CMD tee $MONGO_REPO_FILE
+            ;;
+        focal)
+            curl -fsSL https://www.mongodb.org/static/pgp/server-6.0.asc | \
+               $SUDO_CMD gpg --dearmor -o /usr/share/keyrings/mongodb-server-6.0.gpg
+            echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-6.0.gpg ] https://repo.mongodb.org/apt/ubuntu $OS_CODENAME/mongodb-org/6.0 multiverse" | $SUDO_CMD tee $MONGO_REPO_FILE
+            ;;
+        *)
+            print_error "Versi Ubuntu $OS_CODENAME tidak didukung oleh logika instalasi MongoDB ini."
+            exit 1
+            ;;
+    esac
+
+    print_step "Update daftar paket setelah penambahan repositori..."
     $SUDO_CMD apt-get update -y
     
-    print_step "Install MongoDB..."
+    print_step "Menginstall paket mongodb-org..."
     $SUDO_CMD apt-get install -y mongodb-org
 
-    sleep 2
-    
-    fix_mongodb_environment
-    cleanup_mongodb_sockets
-    create_mongodb_config
-    setup_mongodb_directories
-    
-    print_step "Reset data directories..."
-    $SUDO_CMD rm -rf /var/lib/mongodb/*
-    $SUDO_CMD rm -rf /var/log/mongodb/*
-    $SUDO_CMD chown -R mongodb:mongodb /var/lib/mongodb
-    $SUDO_CMD chown -R mongodb:mongodb /var/log/mongodb
+    create_mongodb_service_file
 
-    print_step "Start MongoDB service..."
+    print_step "Menjalankan service MongoDB..."
     $SUDO_CMD systemctl daemon-reload
     $SUDO_CMD systemctl enable mongod
-    $SUDO_CMD systemctl restart mongod
+    $SUDO_CMD systemctl start mongod
     sleep 5
 
     if $SUDO_CMD systemctl is-active --quiet mongod; then
-        print_success "MongoDB berhasil diinstall dan berjalan via systemd"
+        print_success "MongoDB berhasil diinstall dan berjalan via systemd."
     else
-        print_error "MongoDB gagal dijalankan otomatis. Cek log dengan:"
-        echo "   sudo journalctl -u mongod -xe"
-        echo "   atau sudo tail -f /var/log/mongodb/mongod.log"
+        print_error "MongoDB gagal dijalankan secara otomatis. Cek log dengan:"
+        echo -e "   ${YELLOW}sudo systemctl status mongod${NC}"
+        echo -e "   ${YELLOW}sudo journalctl -u mongod -xe${NC}"
     fi
 }
 
@@ -496,14 +459,6 @@ fix_permissions() {
     fi
 }
 
-install_mongosh() {
-    print_step "Menginstall mongosh..."
-    
-    $SUDO_CMD apt-get update -y
-    $SUDO_CMD apt install mongosh -y
-    print_success "mongosh berhasil diinstall"
-}
-
 print_summary() {
     echo ""
     echo "==============================================================="
@@ -607,9 +562,6 @@ main() {
     echo ""
     
     fix_permissions
-    echo ""
-
-    install_mongosh
     echo ""
     
     print_summary
